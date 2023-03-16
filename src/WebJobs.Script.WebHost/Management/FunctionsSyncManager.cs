@@ -313,23 +313,26 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Management
             var triggersArray = new JArray(triggers);
             int count = triggersArray.Count;
 
+            // Form the base minimal result
+            string hostId = await _hostIdProvider.GetHostIdAsync(CancellationToken.None);
+            JObject result = new JObject
+            {
+                { "hostId", hostId },
+                { "triggers", triggersArray }
+            };
+
             if (!ArmCacheEnabled)
             {
-                // extended format is disabled - just return triggers
+                // extended format is disabled - just return minimal results
                 return new SyncTriggersPayload
                 {
-                    Content = JsonConvert.SerializeObject(triggersArray),
+                    Content = JsonConvert.SerializeObject(result),
                     Count = count
                 };
             }
 
-            // Add triggers to the payload
-            JObject result = new JObject();
-            result.Add("triggers", triggersArray);
-
             // Add all listable functions details to the payload
             JObject functions = new JObject();
-            string routePrefix = await WebFunctionsManager.GetRoutePrefix(hostOptions.RootScriptPath);
             var listableFunctions = _functionMetadataManager.GetFunctionMetadata().Where(m => !m.IsCodeless());
             var functionDetails = await WebFunctionsManager.GetFunctionMetadataResponse(listableFunctions, hostOptions, _hostNameProvider);
             result.Add("functions", new JArray(functionDetails.Select(p => JObject.FromObject(p))));
@@ -393,15 +396,17 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Management
 
             if (json.Length > ScriptConstants.MaxTriggersStringLength && !_environment.IsKubernetesManagedHosting())
             {
-                // The settriggers call to the FE enforces a max request size
-                // limit. If we're over limit, revert to the minimal triggers
-                // format.
+                // The settriggers call to the FE enforces a max request size limit.
+                // If we're over limit, revert to the minimal triggers format.
                 _logger.LogWarning($"SyncTriggers payload of length '{json.Length}' exceeds max length of '{ScriptConstants.MaxTriggersStringLength}'. Reverting to minimal format.");
-                return new SyncTriggersPayload
+
+                var minimalResult = new JObject
                 {
-                    Content = JsonConvert.SerializeObject(triggersArray),
-                    Count = count
+                    { "hostId", hostId },
+                    { "triggers", triggersArray }
                 };
+
+                json = JsonConvert.SerializeObject(minimalResult);
             }
 
             return new SyncTriggersPayload
