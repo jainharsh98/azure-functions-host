@@ -203,6 +203,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             services.ConfigureOptions<ScriptApplicationHostOptionsSetup>();
             services.AddSingleton<IOptionsChangeTokenSource<ScriptApplicationHostOptions>, ScriptApplicationHostOptionsChangeTokenSource>();
 
+            services.AddOptions<FlexConsumptionMetricsPublisherOptions>();
             services.ConfigureOptions<StandbyOptionsSetup>();
             services.ConfigureOptionsWithChangeTokenSource<LanguageWorkerOptions, LanguageWorkerOptionsSetup, SpecializationChangeTokenSource<LanguageWorkerOptions>>();
             services.ConfigureOptionsWithChangeTokenSource<AppServiceOptions, AppServiceOptionsSetup, SpecializationChangeTokenSource<AppServiceOptions>>();
@@ -258,7 +259,14 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             services.AddSingleton<IMetricsPublisher>(s =>
             {
                 var environment = s.GetService<IEnvironment>();
-                if (environment.IsLinuxMetricsPublishingEnabled())
+                if (environment.IsFlexConsumptionSku())
+                {
+                    var options = s.GetService<IOptions<FlexConsumptionMetricsPublisherOptions>>();
+                    var standbyOptions = s.GetService<IOptionsMonitor<StandbyOptions>>();
+                    var logger = s.GetService<ILogger<FlexConsumptionMetricsPublisher>>();
+                    return new FlexConsumptionMetricsPublisher(environment, standbyOptions, options, logger, new FileSystem());
+                }
+                else if (environment.IsLinuxMetricsPublishingEnabled())
                 {
                     var logger = s.GetService<ILogger<LinuxContainerMetricsPublisher>>();
                     var standbyOptions = s.GetService<IOptionsMonitor<StandbyOptions>>();
